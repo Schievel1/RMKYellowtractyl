@@ -91,13 +91,19 @@ async fn main(_spawner: Spawner) {
         combo: keymap::get_combos(),
         morse: MorsesConfig {
             enable_flow_tap: false,
-            prior_idle_time: Duration::from_millis(0u64),
-            default_profile: MorseProfile::new(Some(false), Some(MorseMode::Normal), Some(50u16), Some(0u16)),
+            prior_idle_time: Duration::from_millis(250u64),
+            default_profile: MorseProfile::new(Some(false), Some(MorseMode::PermissiveHold), Some(150u16), Some(250u16)),
             morses: Vec::new(),
         },
         ..Default::default()
     };
+    // let mut behavior_config = BehaviorConfig::default();
     let storage_config = StorageConfig::default();
+    // let storage_config = StorageConfig {
+        // clear_storage: true,
+        // clear_layout: true,
+        // ..Default::default()
+    // };
     let mut per_key_config = PositionalConfig::default();
     let (keymap, mut storage) = initialize_keymap_and_storage(
         &mut default_keymap,
@@ -164,7 +170,7 @@ async fn main(_spawner: Spawner) {
             EVENT_CHANNEL => [pmw3360_processor],
         },
         keyboard.run(),
-        run_peripheral_manager::<2, 1, 2, 2, _>(0, uart_receiver),
+        run_peripheral_manager::<6, 6, 0, 0, _>(0, uart_receiver),
         run_rmk(&keymap, driver, &mut storage, rmk_config),
     )
         .await;

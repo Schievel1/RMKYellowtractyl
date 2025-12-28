@@ -30,9 +30,9 @@ pub const fn get_default_keymap() -> [[[KeyAction; COL]; ROW]; NUM_LAYER] {
         ]),
         layer!([
 [a!(No),      k!(F1),       k!(F2),      k!(F3),      k!(F4),     k!(F5),                        k!(F6),        k!(F7),       k!(F8),      k!(F9),      k!(F10),        k!(Delete)],
-[a!(No),      a!(No),       a!(No),      a!(No),      a!(No), shifted!(LeftBracket),    shifted!(RightBracket), k!(MouseBtn1), a!(No),   a!(No),       a!(No),        a!(No)],
+[a!(No),      a!(No),       a!(No),      a!(No),      a!(No), shifted!(LeftBracket),    shifted!(RightBracket), k!(MouseBtn2), a!(No),   a!(No),       a!(No),        a!(No)],
 [a!(No),      a!(No),       a!(No),      mo!(2),      k!(Delete), shifted!(Kc9),           shifted!(Kc0), k!(Left),    k!(Up),      k!(Down),     k!(Right),    a!(No)],
-[k!(CapsLock), a!(No),      a!(No),     wm!(X, LCTRL), wm!(C, LCTRL), wm!(V, LCTRL),             a!(No),         k!(MouseBtn2), a!(No),      a!(No),       a!(No),        a!(No)],
+[k!(CapsLock), a!(No),      a!(No),     wm!(X, LCTRL), wm!(C, LCTRL), wm!(V, LCTRL),             a!(No),         k!(MouseBtn1), a!(No),      a!(No),       a!(No),        a!(No)],
 [a!(No), a!(No), a!(No), a!(No), a!(No), a!(No), a!(No), a!(No), a!(No), a!(No),                                                              a!(No), a!(No)],
 [a!(No), a!(No), a!(No), a!(No), a!(No), a!(No), a!(No), a!(No), a!(No), a!(No),                                                              a!(No), a!(No)]
         ]),

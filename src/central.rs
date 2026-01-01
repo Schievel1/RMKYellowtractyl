@@ -18,21 +18,29 @@ use embassy_rp::uart::{self, BufferedUart};
 use embassy_rp::usb::{Driver, InterruptHandler};
 use rmk::channel::EVENT_CHANNEL;
 use rmk::config::{BehaviorConfig, DeviceConfig, PositionalConfig, RmkConfig, StorageConfig, VialConfig, MorsesConfig};
-use rmk_types::action::{MorseMode, MorseProfile};
+use rmk::types::action::{MorseMode, MorseProfile};
 // use rmk::config::macro_config::KeyboardMacrosConfig;
 // use rmk::config::CombosConfig;
 // use rmk::config::TapConfig;
 use rmk::debounce::default_debouncer::DefaultDebouncer;
-use rmk::futures::future::join5;
 use rmk::input_device::Runnable;
 use rmk::keyboard::Keyboard;
 use rmk::matrix::{Matrix, OffsetMatrixWrapper};
 use rmk::split::SPLIT_MESSAGE_MAX_SIZE;
 use rmk::split::central::run_peripheral_manager;
 use rmk::{initialize_keymap_and_storage, run_devices, run_processor_chain, run_rmk};
+use rmk::join_all;
+use rmk::controller::EventController;
 use static_cell::StaticCell;
 use vial::{VIAL_KEYBOARD_DEF, VIAL_KEYBOARD_ID};
 use {defmt_rtt as _, panic_probe as _};
+pub mod pmw3360srom;
+
+pub mod pointingdevcontroller;
+use crate::pointingdevcontroller::PointingDeviceController;
+// Debug
+use crate::pointingdevcontroller::debug_pointing_device_events;
+use rmk::channel::CONTROLLER_CHANNEL;
 
 bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => InterruptHandler<USB>;
@@ -123,8 +131,10 @@ async fn main(_spawner: Spawner) {
     // PMW sensor
     use embassy_rp::spi::{Spi, Config, Polarity, Phase};
     use embassy_rp::gpio::Output;
-    use pmw3360_rs::{Pmw3360Config, Pmw3360Device};
+    use rmk::input_device::pointing::PointingDevice;
+    use rmk::input_device::pmw33xx::{Pmw33xx, Pmw33xxConfig, Pmw3360Spec};
     use embassy_rp::gpio::{Level, Pull};
+    use embassy_embedded_hal::adapter::BlockingAsync;
 
     let mut spi_cfg = Config::default();
     // // MODE_3 = Polarity::IdleHigh + Phase::CaptureOnSecondTransition
@@ -140,10 +150,12 @@ async fn main(_spawner: Spawner) {
     let pmw3360_irq = Input::new(p.PIN_20, Pull::Up);
 
     // Create the SPI bus
-    let pmw3360_spi = Spi::new(p.SPI0, pmw3360_sck,pmw3360_mosi,pmw3360_miso, p.DMA_CH2, p.DMA_CH3, spi_cfg);
+    // let pmw3360_spi = Spi::new(p.SPI0, pmw3360_sck,pmw3360_mosi,pmw3360_miso, p.DMA_CH2, p.DMA_CH3, spi_cfg);
+    let pmw3360_spi = Spi::new_blocking(p.SPI0, pmw3360_sck, pmw3360_mosi, pmw3360_miso, spi_cfg);
+    let pmw3360_spi = BlockingAsync::new(pmw3360_spi);
 
     // Initialize PMW3360 mouse sensor
-    let pmw3360_config = Pmw3360Config {
+    let pmw3360_config = Pmw33xxConfig {
         res_cpi: 1600,
         rot_trans_angle: -15,
         liftoff_dist: 0x08,
@@ -154,15 +166,22 @@ async fn main(_spawner: Spawner) {
     };
 
     // Create the sensor device
-    let mut pmw3360_device = Pmw3360Device::new(
-        pmw3360_spi, pmw3360_cs, Some(pmw3360_irq), pmw3360_config
+    let mut pmw3360_device = PointingDevice::<Pmw33xx<_, _, _, Pmw3360Spec>>::new_with_firmware(
+        0, pmw3360_spi, pmw3360_cs, Some(pmw3360_irq), pmw3360_config, crate::pmw3360srom::PMW3360_SROM
     );
 
-    use rmk::input_device::pmw3610::Pmw3610Processor;
+    use rmk::input_device::pointing::PointingProcessor;
 
-    let mut pmw3360_processor = Pmw3610Processor::new(&keymap);
+    let mut pmw3360_processor = PointingProcessor::new(&keymap);
 
-    join5(
+    // Initialize pointing device controller
+    // this is for detecting layer changes and sending controller events to the PMW3360
+    let mut pointing_controller = PointingDeviceController::new();
+
+    // Debug
+    // let cont_pub = CONTROLLER_CHANNEL.publisher().unwrap();
+
+    join_all!(
         run_devices! (
             (matrix, pmw3360_device) => EVENT_CHANNEL,
         ),
@@ -170,8 +189,10 @@ async fn main(_spawner: Spawner) {
             EVENT_CHANNEL => [pmw3360_processor],
         },
         keyboard.run(),
+        pointing_controller.event_loop(),
         run_peripheral_manager::<6, 6, 0, 0, _>(0, uart_receiver),
-        run_rmk(&keymap, driver, &mut storage, rmk_config),
+        run_rmk(&keymap, driver, &mut storage, rmk_config)
+        // ,debug_pointing_device_events(cont_pub)
     )
         .await;
 }

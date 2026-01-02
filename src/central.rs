@@ -8,7 +8,6 @@ mod macros;
 mod vial;
 
 use defmt::info;
-use rmk::heapless::Vec;
 use embassy_executor::Spawner;
 use embassy_rp::bind_interrupts;
 use embassy_rp::flash::{Async, Flash};
@@ -17,20 +16,24 @@ use embassy_rp::peripherals::{UART0, USB};
 use embassy_rp::uart::{self, BufferedUart};
 use embassy_rp::usb::{Driver, InterruptHandler};
 use rmk::channel::EVENT_CHANNEL;
-use rmk::config::{BehaviorConfig, DeviceConfig, PositionalConfig, RmkConfig, StorageConfig, VialConfig, MorsesConfig};
+use rmk::config::{
+    BehaviorConfig, DeviceConfig, MorsesConfig, PositionalConfig, RmkConfig, StorageConfig,
+    VialConfig,
+};
+use rmk::heapless::Vec;
 use rmk::types::action::{MorseMode, MorseProfile};
 // use rmk::config::macro_config::KeyboardMacrosConfig;
 // use rmk::config::CombosConfig;
 // use rmk::config::TapConfig;
+use rmk::controller::EventController;
 use rmk::debounce::default_debouncer::DefaultDebouncer;
 use rmk::input_device::Runnable;
+use rmk::join_all;
 use rmk::keyboard::Keyboard;
 use rmk::matrix::{Matrix, OffsetMatrixWrapper};
-use rmk::split::SPLIT_MESSAGE_MAX_SIZE;
 use rmk::split::central::run_peripheral_manager;
+use rmk::split::SPLIT_MESSAGE_MAX_SIZE;
 use rmk::{initialize_keymap_and_storage, run_devices, run_processor_chain, run_rmk};
-use rmk::join_all;
-use rmk::controller::EventController;
 use static_cell::StaticCell;
 use vial::{VIAL_KEYBOARD_DEF, VIAL_KEYBOARD_ID};
 use {defmt_rtt as _, panic_probe as _};
@@ -89,7 +92,15 @@ async fn main(_spawner: Spawner) {
     let tx_buf = &mut TX_BUF.init([0; SPLIT_MESSAGE_MAX_SIZE])[..];
     static RX_BUF: StaticCell<[u8; SPLIT_MESSAGE_MAX_SIZE]> = StaticCell::new();
     let rx_buf = &mut RX_BUF.init([0; SPLIT_MESSAGE_MAX_SIZE])[..];
-    let uart_receiver = BufferedUart::new(p.UART0, p.PIN_0, p.PIN_1, Irqs, tx_buf, rx_buf, uart::Config::default());
+    let uart_receiver = BufferedUart::new(
+        p.UART0,
+        p.PIN_0,
+        p.PIN_1,
+        Irqs,
+        tx_buf,
+        rx_buf,
+        uart::Config::default(),
+    );
     use embassy_time::Duration;
 
     // Initialize the storage and keymap
@@ -100,7 +111,12 @@ async fn main(_spawner: Spawner) {
         morse: MorsesConfig {
             enable_flow_tap: false,
             prior_idle_time: Duration::from_millis(250u64),
-            default_profile: MorseProfile::new(Some(false), Some(MorseMode::PermissiveHold), Some(150u16), Some(250u16)),
+            default_profile: MorseProfile::new(
+                Some(false),
+                Some(MorseMode::PermissiveHold),
+                Some(150u16),
+                Some(250u16),
+            ),
             morses: Vec::new(),
         },
         ..Default::default()
@@ -108,9 +124,9 @@ async fn main(_spawner: Spawner) {
     // let mut behavior_config = BehaviorConfig::default();
     let storage_config = StorageConfig::default();
     // let storage_config = StorageConfig {
-        // clear_storage: true,
-        // clear_layout: true,
-        // ..Default::default()
+    // clear_storage: true,
+    // clear_layout: true,
+    // ..Default::default()
     // };
     let mut per_key_config = PositionalConfig::default();
     let (keymap, mut storage) = initialize_keymap_and_storage(
@@ -120,21 +136,22 @@ async fn main(_spawner: Spawner) {
         &mut behavior_config,
         &mut per_key_config,
     )
-        .await;
+    .await;
 
     // Initialize the matrix + keyboard
     let debouncer = DefaultDebouncer::new();
-    let mut matrix =
-        OffsetMatrixWrapper::<_, _, _, 0, 6>(Matrix::<_, _, _, 6, 6, true>::new(row_pins, col_pins, debouncer));
+    let mut matrix = OffsetMatrixWrapper::<_, _, _, 0, 6>(Matrix::<_, _, _, 6, 6, true>::new(
+        row_pins, col_pins, debouncer,
+    ));
     let mut keyboard = Keyboard::new(&keymap);
 
     // PMW sensor
-    use embassy_rp::spi::{Spi, Config, Polarity, Phase};
-    use embassy_rp::gpio::Output;
-    use rmk::input_device::pointing::PointingDevice;
-    use rmk::input_device::pmw33xx::{Pmw33xx, Pmw33xxConfig, Pmw3360Spec};
-    use embassy_rp::gpio::{Level, Pull};
     use embassy_embedded_hal::adapter::BlockingAsync;
+    use embassy_rp::gpio::Output;
+    use embassy_rp::gpio::{Level, Pull};
+    use embassy_rp::spi::{Config, Phase, Polarity, Spi};
+    use rmk::input_device::pmw33xx::{Pmw3360Spec, Pmw33xx, Pmw33xxConfig};
+    use rmk::input_device::pointing::PointingDevice;
 
     let mut spi_cfg = Config::default();
     // // MODE_3 = Polarity::IdleHigh + Phase::CaptureOnSecondTransition
@@ -167,7 +184,12 @@ async fn main(_spawner: Spawner) {
 
     // Create the sensor device
     let mut pmw3360_device = PointingDevice::<Pmw33xx<_, _, _, Pmw3360Spec>>::new_with_firmware(
-        0, pmw3360_spi, pmw3360_cs, Some(pmw3360_irq), pmw3360_config, crate::pmw3360srom::PMW3360_SROM
+        0,
+        pmw3360_spi,
+        pmw3360_cs,
+        Some(pmw3360_irq),
+        pmw3360_config,
+        crate::pmw3360srom::PMW3360_SROM,
     );
 
     use rmk::input_device::pointing::PointingProcessor;
@@ -191,8 +213,7 @@ async fn main(_spawner: Spawner) {
         keyboard.run(),
         pointing_controller.event_loop(),
         run_peripheral_manager::<6, 6, 0, 0, _>(0, uart_receiver),
-        run_rmk(&keymap, driver, &mut storage, rmk_config)
-        // ,debug_pointing_device_events(cont_pub)
+        run_rmk(&keymap, driver, &mut storage, rmk_config) // ,debug_pointing_device_events(cont_pub)
     )
-        .await;
+    .await;
 }

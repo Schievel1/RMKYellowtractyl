@@ -28,7 +28,7 @@ use {defmt_rtt as _, panic_probe as _};
 // graphics
 use embedded_graphics::{
     mono_font::{
-        ascii::FONT_6X10, //, FONT_6X12, FONT_6X9, FONT_7X13},
+        ascii::{FONT_6X10, FONT_6X12, FONT_6X9, FONT_7X13},
         MonoTextStyleBuilder,
     },
     pixelcolor::BinaryColor,

@@ -28,7 +28,8 @@ use rmk::types::action::{MorseMode, MorseProfile};
 use rmk::controller::{EventController, PollingController};
 use rmk::debounce::default_debouncer::DefaultDebouncer;
 use rmk::input_device::Runnable;
-use rmk::join_all;
+// use rmk::join_all;
+use rmk::futures::future::{join3, join5};
 use rmk::keyboard::Keyboard;
 use rmk::matrix::{Matrix, OffsetMatrixWrapper};
 use rmk::split::central::run_peripheral_manager;
@@ -191,7 +192,7 @@ async fn main(_spawner: Spawner) {
 
     // Create the sensor device
     let mut pmw3360_device = PointingDevice::<Pmw33xx<_, _, _, Pmw3360Spec>>::new_with_firmware_poll_interval_report_hertz(
-        1,
+        0,
         pmw3360_spi,
         pmw3360_cs,
 
@@ -214,12 +215,13 @@ async fn main(_spawner: Spawner) {
 
     // Initialize pointing device controller
     // this is for detecting layer changes and sending controller events to the PMW3360
-    let mut pointing_controller = PointingDeviceController::new();
+    let mut pointing_controller = PointingDeviceController::default();
+
 
     // Jiggle control
-    let mut jiggle_controller = JiggleController::new();
+    let mut jiggle_controller = JiggleController::default();
 
-    join_all!(
+    join5(
         run_devices! (
             (matrix, pmw3360_device) => EVENT_CHANNEL,
         ),
@@ -227,11 +229,12 @@ async fn main(_spawner: Spawner) {
             EVENT_CHANNEL => [pmw3360_processor],
         },
         keyboard.run(),
-        pointing_controller.event_loop(),
-        // jiggle_controller.event_loop(),
-        jiggle_controller.polling_loop(),
         run_peripheral_manager::<6, 6, 0, 0, _>(0, uart_receiver),
-        run_rmk(&keymap, driver, &mut storage, rmk_config) // ,debug_pointing_device_events(cont_pub)
+        join3(
+            run_rmk(&keymap, driver, &mut storage, rmk_config),
+            pointing_controller.event_loop(),
+            jiggle_controller.polling_loop(),
+        ),
     )
     .await;
 }

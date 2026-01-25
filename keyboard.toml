@@ -116,21 +116,3 @@ split_peripherals_num = 1
 # Unlock combination: simultaneous press of specified keys
 unlock_keys = [[0, 0], [2, 0]]  # Keys at (row=0,col=0) and (row=0,col=1) (~ and ESC)
 
-[[input_device.pmw3610]]
-name = "trackball0"
-
-spi.instance = "bitbang0"
-spi.sck = "PIN18"
-spi.mosi = "PIN16"
-spi.miso = "PIN16"
-spi.cs = "PIN17"
-# or spi = { instance = "bitbang0", sck = "P0_05", mosi = "P0_04", miso = "P0_04", cs = "P0_09" }
-
-motion = "PIN20" # Optional. If omitted, the sensor is polled.
-
-force_awake = false
-smart_mode = true
-cpi = 800
-invert_x = true
-# invert_y = true
-# swap_xy = true

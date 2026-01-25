@@ -25,7 +25,7 @@ use rmk::types::action::{MorseMode, MorseProfile};
 // use rmk::config::macro_config::KeyboardMacrosConfig;
 // use rmk::config::CombosConfig;
 // use rmk::config::TapConfig;
-use rmk::controller::EventController;
+use rmk::controller::{EventController, PollingController};
 use rmk::debounce::default_debouncer::DefaultDebouncer;
 use rmk::input_device::Runnable;
 use rmk::join_all;
@@ -41,9 +41,12 @@ pub mod pmw3360srom;
 
 pub mod pointingdevcontroller;
 use crate::pointingdevcontroller::PointingDeviceController;
+pub mod jigglemode;
+use jigglemode::JiggleController;
+
 // Debug
-use crate::pointingdevcontroller::debug_pointing_device_events;
-use rmk::channel::CONTROLLER_CHANNEL;
+// use crate::pointingdevcontroller::debug_pointing_device_events;
+// use rmk::channel::CONTROLLER_CHANNEL;
 
 bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => InterruptHandler<USB>;
@@ -122,12 +125,12 @@ async fn main(_spawner: Spawner) {
         ..Default::default()
     };
     // let mut behavior_config = BehaviorConfig::default();
-    let storage_config = StorageConfig::default();
-    // let storage_config = StorageConfig {
-    // clear_storage: true,
-    // clear_layout: true,
-    // ..Default::default()
-    // };
+    // let storage_config = StorageConfig::default();
+    let storage_config = StorageConfig {
+        clear_storage: true,
+        clear_layout: true,
+        ..Default::default()
+    };
     let mut per_key_config = PositionalConfig::default();
     let (keymap, mut storage) = initialize_keymap_and_storage(
         &mut default_keymap,
@@ -146,9 +149,9 @@ async fn main(_spawner: Spawner) {
     let mut keyboard = Keyboard::new(&keymap);
 
     // PMW sensor
-    use embassy_embedded_hal::adapter::BlockingAsync;
-    use embassy_rp::gpio::Output;
-    use embassy_rp::gpio::{Level, Pull};
+    // use embassy_embedded_hal::adapter::BlockingAsync;
+    use embassy_rp::gpio::Level;
+    use embassy_rp::gpio::{Output, Pull};
     use embassy_rp::spi::{Config, Phase, Polarity, Spi};
     use rmk::input_device::pmw33xx::{Pmw3360Spec, Pmw33xx, Pmw33xxConfig};
     use rmk::input_device::pointing::PointingDevice;
@@ -164,44 +167,57 @@ async fn main(_spawner: Spawner) {
     let pmw3360_mosi = p.PIN_19;
     let pmw3360_miso = p.PIN_16;
     let pmw3360_cs = Output::new(p.PIN_17, Level::High);
-    let pmw3360_irq = Input::new(p.PIN_20, Pull::Up);
+    // let pmw3360_irq = Input::new(p.PIN_20, Pull::Up);
 
     // Create the SPI bus
-    // let pmw3360_spi = Spi::new(p.SPI0, pmw3360_sck,pmw3360_mosi,pmw3360_miso, p.DMA_CH2, p.DMA_CH3, spi_cfg);
-    let pmw3360_spi = Spi::new_blocking(p.SPI0, pmw3360_sck, pmw3360_mosi, pmw3360_miso, spi_cfg);
-    let pmw3360_spi = BlockingAsync::new(pmw3360_spi);
+    let pmw3360_spi = Spi::new(
+        p.SPI0,
+        pmw3360_sck,
+        pmw3360_mosi,
+        pmw3360_miso,
+        p.DMA_CH2,
+        p.DMA_CH3,
+        spi_cfg,
+    );
+    // let pmw3360_spi = Spi::new_blocking(p.SPI0, pmw3360_sck, pmw3360_mosi, pmw3360_miso, spi_cfg);
+    // let pmw3360_spi = BlockingAsync::new(pmw3360_spi);
 
     // Initialize PMW3360 mouse sensor
     let pmw3360_config = Pmw33xxConfig {
         res_cpi: 1600,
         rot_trans_angle: -15,
         liftoff_dist: 0x08,
-        swap_xy: false,
-        invert_x: true,
-        invert_y: false,
-        ..Default::default()
     };
 
     // Create the sensor device
-    let mut pmw3360_device = PointingDevice::<Pmw33xx<_, _, _, Pmw3360Spec>>::new_with_firmware(
-        0,
+    let mut pmw3360_device = PointingDevice::<Pmw33xx<_, _, _, Pmw3360Spec>>::new_with_firmware_poll_interval_report_hertz(
+        1,
         pmw3360_spi,
         pmw3360_cs,
-        Some(pmw3360_irq),
+
+        // Some(pmw3360_irq),
+        None::<::embassy_rp::gpio::Input<'static>>,
         pmw3360_config,
+        500,
+        125,
         crate::pmw3360srom::PMW3360_SROM,
     );
 
-    use rmk::input_device::pointing::PointingProcessor;
+    use rmk::input_device::pointing::{PointingProcessor, PointingProcessorConfig};
 
-    let mut pmw3360_processor = PointingProcessor::new(&keymap);
+    let pmw3360_proc_config = PointingProcessorConfig {
+        invert_x: true,
+        ..Default::default()
+    };
+
+    let mut pmw3360_processor = PointingProcessor::new(&keymap, pmw3360_proc_config);
 
     // Initialize pointing device controller
     // this is for detecting layer changes and sending controller events to the PMW3360
     let mut pointing_controller = PointingDeviceController::new();
 
-    // Debug
-    // let cont_pub = CONTROLLER_CHANNEL.publisher().unwrap();
+    // Jiggle control
+    let mut jiggle_controller = JiggleController::new();
 
     join_all!(
         run_devices! (
@@ -212,6 +228,8 @@ async fn main(_spawner: Spawner) {
         },
         keyboard.run(),
         pointing_controller.event_loop(),
+        // jiggle_controller.event_loop(),
+        jiggle_controller.polling_loop(),
         run_peripheral_manager::<6, 6, 0, 0, _>(0, uart_receiver),
         run_rmk(&keymap, driver, &mut storage, rmk_config) // ,debug_pointing_device_events(cont_pub)
     )

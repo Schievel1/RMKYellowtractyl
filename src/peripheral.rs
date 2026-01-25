@@ -5,21 +5,37 @@
 mod macros;
 
 use defmt::*;
+use embassy_embedded_hal::adapter::BlockingAsync;
 use embassy_executor::Spawner;
+use embassy_futures::join::join3;
 use embassy_rp::bind_interrupts;
 use embassy_rp::gpio::{Input, Output};
+use embassy_rp::i2c::I2c;
 use embassy_rp::peripherals::{UART0, USB};
 use embassy_rp::uart::{self, BufferedUart};
 use embassy_rp::usb::InterruptHandler;
+// use embassy_time::{Duration, Timer};
 use rmk::channel::EVENT_CHANNEL;
 use rmk::debounce::default_debouncer::DefaultDebouncer;
-use rmk::futures::future::join;
+// use rmk::futures::future::join;
 use rmk::matrix::Matrix;
 use rmk::run_devices;
 use rmk::split::peripheral::run_rmk_split_peripheral;
 use rmk::split::SPLIT_MESSAGE_MAX_SIZE;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
+
+// graphics
+use embedded_graphics::{
+    mono_font::{
+        ascii::FONT_6X10, //, FONT_6X12, FONT_6X9, FONT_7X13},
+        MonoTextStyleBuilder,
+    },
+    pixelcolor::BinaryColor,
+    prelude::*,
+    text::{Baseline, Text},
+};
+use ssd1306::{prelude::*, I2CDisplayInterface, Ssd1306Async};
 
 bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => InterruptHandler<USB>;
@@ -56,10 +72,35 @@ async fn main(_spawner: Spawner) {
     let debouncer = DefaultDebouncer::new();
     let mut matrix = Matrix::<_, _, _, 6, 6, true>::new(row_pins, col_pins, debouncer);
 
+    // display driver
+    let config = embassy_rp::i2c::Config::default();
+    let i2c = I2c::new_blocking(p.I2C1, p.PIN_3, p.PIN_2, config);
+    let i2c = BlockingAsync::new(i2c);
+
+    // Create display interface with default I2C address 0x3C
+    let interface = I2CDisplayInterface::new(i2c);
+    let mut display = Ssd1306Async::new(interface, DisplaySize128x32, DisplayRotation::Rotate0)
+        .into_buffered_graphics_mode();
+    display.init().await.unwrap();
+
+    let text_style = MonoTextStyleBuilder::new()
+        .font(&FONT_6X10)
+        .text_color(BinaryColor::On)
+        .build();
+
+    display.clear_buffer();
+    Text::with_baseline("Hallo Ada!", Point::new(0, 0), text_style, Baseline::Top)
+        .draw(&mut display)
+        .unwrap();
+
     // Start
-    join(
+    join3(
         run_devices!((matrix) => EVENT_CHANNEL), // Peripheral uses EVENT_CHANNEL to send events to central
         run_rmk_split_peripheral(uart_instance),
+        async {
+            // Timer::after(Duration::from_millis(100)).await;
+            display.flush().await.unwrap();
+        },
     )
     .await;
 }

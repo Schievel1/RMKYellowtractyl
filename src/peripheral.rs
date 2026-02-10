@@ -7,7 +7,6 @@ mod macros;
 use defmt::*;
 use embassy_embedded_hal::adapter::BlockingAsync;
 use embassy_executor::Spawner;
-use embassy_futures::join::join3;
 use embassy_rp::bind_interrupts;
 use embassy_rp::gpio::{Input, Output};
 use embassy_rp::i2c::I2c;
@@ -15,11 +14,10 @@ use embassy_rp::peripherals::{UART0, USB};
 use embassy_rp::uart::{self, BufferedUart};
 use embassy_rp::usb::InterruptHandler;
 // use embassy_time::{Duration, Timer};
-use rmk::channel::EVENT_CHANNEL;
 use rmk::debounce::default_debouncer::DefaultDebouncer;
-// use rmk::futures::future::join;
+use rmk::join_all;
 use rmk::matrix::Matrix;
-use rmk::run_devices;
+use rmk::run_all;
 use rmk::split::peripheral::run_rmk_split_peripheral;
 use rmk::split::SPLIT_MESSAGE_MAX_SIZE;
 use static_cell::StaticCell;
@@ -70,7 +68,7 @@ async fn main(_spawner: Spawner) {
 
     // Define the matrix
     let debouncer = DefaultDebouncer::new();
-    let mut matrix = Matrix::<_, _, _, 6, 6, true>::new(row_pins, col_pins, debouncer);
+    let mut matrix = Matrix::<_, _, _, 6, 6, true, 0, 0>::new(row_pins, col_pins, debouncer);
 
     // display driver
     let config = embassy_rp::i2c::Config::default();
@@ -94,13 +92,13 @@ async fn main(_spawner: Spawner) {
         .unwrap();
 
     // Start
-    join3(
-        run_devices!((matrix) => EVENT_CHANNEL), // Peripheral uses EVENT_CHANNEL to send events to central
+    join_all!(
+        run_all!(matrix),
         run_rmk_split_peripheral(uart_instance),
         async {
             // Timer::after(Duration::from_millis(100)).await;
             display.flush().await.unwrap();
-        },
+        }
     )
     .await;
 }

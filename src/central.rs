@@ -15,7 +15,6 @@ use embassy_rp::gpio::Input;
 use embassy_rp::peripherals::{UART0, USB};
 use embassy_rp::uart::{self, BufferedUart};
 use embassy_rp::usb::{Driver, InterruptHandler};
-use rmk::channel::EVENT_CHANNEL;
 use rmk::config::{
     BehaviorConfig, DeviceConfig, MorsesConfig, PositionalConfig, RmkConfig, StorageConfig,
     VialConfig,
@@ -28,13 +27,12 @@ use rmk::types::action::{MorseMode, MorseProfile};
 use rmk::controller::{EventController, PollingController};
 use rmk::debounce::default_debouncer::DefaultDebouncer;
 use rmk::input_device::Runnable;
-// use rmk::join_all;
-use rmk::futures::future::{join3, join5};
+use rmk::join_all;
 use rmk::keyboard::Keyboard;
-use rmk::matrix::{Matrix, OffsetMatrixWrapper};
+use rmk::matrix::Matrix;
 use rmk::split::central::run_peripheral_manager;
 use rmk::split::SPLIT_MESSAGE_MAX_SIZE;
-use rmk::{initialize_keymap_and_storage, run_devices, run_processor_chain, run_rmk};
+use rmk::{initialize_keymap_and_storage, run_all, run_rmk};
 use static_cell::StaticCell;
 use vial::{VIAL_KEYBOARD_DEF, VIAL_KEYBOARD_ID};
 use {defmt_rtt as _, panic_probe as _};
@@ -126,12 +124,12 @@ async fn main(_spawner: Spawner) {
         ..Default::default()
     };
     // let mut behavior_config = BehaviorConfig::default();
-    // let storage_config = StorageConfig::default();
-    let storage_config = StorageConfig {
-        clear_storage: true,
-        clear_layout: true,
-        ..Default::default()
-    };
+    let storage_config = StorageConfig::default();
+    // let storage_config = StorageConfig {
+        // clear_storage: true,
+        // clear_layout: true,
+        // ..Default::default()
+    // };
     let mut per_key_config = PositionalConfig::default();
     let (keymap, mut storage) = initialize_keymap_and_storage(
         &mut default_keymap,
@@ -144,9 +142,9 @@ async fn main(_spawner: Spawner) {
 
     // Initialize the matrix + keyboard
     let debouncer = DefaultDebouncer::new();
-    let mut matrix = OffsetMatrixWrapper::<_, _, _, 0, 6>(Matrix::<_, _, _, 6, 6, true>::new(
+    let mut matrix = Matrix::<_, _, _, 6, 6, true, 0, 6>::new(
         row_pins, col_pins, debouncer,
-    ));
+    );
     let mut keyboard = Keyboard::new(&keymap);
 
     // PMW sensor
@@ -221,20 +219,11 @@ async fn main(_spawner: Spawner) {
     // Jiggle control
     let mut jiggle_controller = JiggleController::default();
 
-    join5(
-        run_devices! (
-            (matrix, pmw3360_device) => EVENT_CHANNEL,
-        ),
-        run_processor_chain! {
-            EVENT_CHANNEL => [pmw3360_processor],
-        },
+    join_all!(
+        run_all!(matrix, pmw3360_device, pointing_controller, jiggle_controller, pmw3360_processor),
         keyboard.run(),
         run_peripheral_manager::<6, 6, 0, 0, _>(0, uart_receiver),
-        join3(
-            run_rmk(&keymap, driver, &mut storage, rmk_config),
-            pointing_controller.event_loop(),
-            jiggle_controller.polling_loop(),
-        ),
+        run_rmk(&keymap, driver, &mut storage, rmk_config)
     )
     .await;
 }

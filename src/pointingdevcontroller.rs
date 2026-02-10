@@ -1,6 +1,6 @@
 use rmk::event::{LayerChangeEvent, publish_controller_event};
 use rmk_macro::controller;
-use rmk::event::PointingSetCpiEvent;
+// use rmk::event::PointingSetCpiEvent;
 
 #[controller(subscribe = [LayerChangeEvent])]
 pub struct PointingDeviceController {

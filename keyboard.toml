@@ -116,3 +116,13 @@ split_peripherals_num = 1
 # Unlock combination: simultaneous press of specified keys
 unlock_keys = [[0, 0], [2, 0]]  # Keys at (row=0,col=0) and (row=0,col=1) (~ and ESC)
 
+
+[event.keyboard]
+channel_size = 16
+pubs = 2
+subs = 3
+
+[event.layer_change]
+channel_size = 1
+pubs = 2
+subs = 3

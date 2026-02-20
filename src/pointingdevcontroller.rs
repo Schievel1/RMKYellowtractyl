@@ -1,8 +1,8 @@
-use rmk::event::{LayerChangeEvent, publish_controller_event};
-use rmk_macro::controller;
-// use rmk::event::PointingSetCpiEvent;
+use rmk::event::{ LayerChangeEvent, publish_event };
+use rmk_macro::processor;
+use rmk::event::PointingSetCpiEvent;
 
-#[controller(subscribe = [LayerChangeEvent])]
+#[processor(subscribe = [LayerChangeEvent])]
 pub struct PointingDeviceController {
     current_layer: u8,
 }
@@ -23,25 +23,27 @@ impl PointingDeviceController {
 
     async fn on_layer_change_event(&mut self, event: LayerChangeEvent) {
         info!("layer {}", event.layer);
-        // if event.layer != self.current_layer {
-        //     self.current_layer = event.layer;
-        // }
+        if event.layer != self.current_layer {
+            self.current_layer = event.layer;
+        }
 
-        // match event.layer {
-        //     0 => {
-        //         publish_controller_event(PointingSetCpiEvent {
-        //             device_id: 0,
-        //             cpi: 1600,
-        //         });
-        //     }
-        //     1 => {
-        //         publish_controller_event(PointingSetCpiEvent {
-        //             device_id: 0,
-        //             cpi: 200,
-        //         });
-        //     }
-        //     _ => {}
-        // }
+        match event.layer {
+            0 => {
+                info!("out: cpi 1600");
+                publish_event(PointingSetCpiEvent {
+                    device_id: 0,
+                    cpi: 1600,
+                });
+            }
+            1 => {
+                info!("out: cpi 200");
+                publish_event(PointingSetCpiEvent {
+                    device_id: 0,
+                    cpi: 200,
+                });
+            }
+            _ => {}
+        }
     }
 }
 

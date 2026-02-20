@@ -13,7 +13,6 @@ use embassy_rp::i2c::I2c;
 use embassy_rp::peripherals::{UART0, USB};
 use embassy_rp::uart::{self, BufferedUart};
 use embassy_rp::usb::InterruptHandler;
-// use embassy_time::{Duration, Timer};
 use rmk::debounce::default_debouncer::DefaultDebouncer;
 use rmk::join_all;
 use rmk::matrix::Matrix;
@@ -23,16 +22,10 @@ use rmk::split::SPLIT_MESSAGE_MAX_SIZE;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
+pub mod ssd1306cont;
+use ssd1306cont::Ssd1306Controller;
+
 // graphics
-use embedded_graphics::{
-    mono_font::{
-        ascii::{FONT_6X10, FONT_6X12, FONT_6X9, FONT_7X13},
-        MonoTextStyleBuilder,
-    },
-    pixelcolor::BinaryColor,
-    prelude::*,
-    text::{Baseline, Text},
-};
 use ssd1306::{prelude::*, I2CDisplayInterface, Ssd1306Async};
 
 bind_interrupts!(struct Irqs {
@@ -77,28 +70,16 @@ async fn main(_spawner: Spawner) {
 
     // Create display interface with default I2C address 0x3C
     let interface = I2CDisplayInterface::new(i2c);
-    let mut display = Ssd1306Async::new(interface, DisplaySize128x32, DisplayRotation::Rotate0)
+    let mut display = Ssd1306Async::new(interface, DisplaySize128x32, DisplayRotation::Rotate90)
         .into_buffered_graphics_mode();
     display.init().await.unwrap();
 
-    let text_style = MonoTextStyleBuilder::new()
-        .font(&FONT_6X10)
-        .text_color(BinaryColor::On)
-        .build();
-
-    display.clear_buffer();
-    Text::with_baseline("Hallo Ada!", Point::new(0, 0), text_style, Baseline::Top)
-        .draw(&mut display)
-        .unwrap();
+    let mut ssd1306cont = Ssd1306Controller::new(display);
 
     // Start
     join_all!(
-        run_all!(matrix),
-        run_rmk_split_peripheral(uart_instance),
-        async {
-            // Timer::after(Duration::from_millis(100)).await;
-            display.flush().await.unwrap();
-        }
+        run_all!(matrix, ssd1306cont),
+        run_rmk_split_peripheral(uart_instance)
     )
     .await;
 }

@@ -21,10 +21,6 @@ use rmk::config::{
 };
 use rmk::heapless::Vec;
 use rmk::types::action::{MorseMode, MorseProfile};
-// use rmk::config::macro_config::KeyboardMacrosConfig;
-// use rmk::config::CombosConfig;
-// use rmk::config::TapConfig;
-use rmk::controller::{EventController, PollingController};
 use rmk::debounce::default_debouncer::DefaultDebouncer;
 use rmk::input_device::Runnable;
 use rmk::join_all;
@@ -42,10 +38,6 @@ pub mod pointingdevcontroller;
 use crate::pointingdevcontroller::PointingDeviceController;
 pub mod jigglemode;
 use jigglemode::JiggleController;
-
-// Debug
-// use crate::pointingdevcontroller::debug_pointing_device_events;
-// use rmk::channel::CONTROLLER_CHANNEL;
 
 bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => InterruptHandler<USB>;
@@ -217,10 +209,10 @@ async fn main(_spawner: Spawner) {
 
 
     // Jiggle control
-    let mut jiggle_controller = JiggleController::default();
+    let mut jiggle_controller = JiggleController::new(&keymap);
 
     join_all!(
-        run_all!(matrix, pmw3360_device, pointing_controller, jiggle_controller, pmw3360_processor),
+        run_all!(matrix, jiggle_controller, pointing_controller, pmw3360_device, pmw3360_processor),
         keyboard.run(),
         run_peripheral_manager::<6, 6, 0, 0, _>(0, uart_receiver),
         run_rmk(&keymap, driver, &mut storage, rmk_config)

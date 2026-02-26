@@ -45,6 +45,7 @@ embedded-graphics = "0.8.1"
 # Jiggle mode
 usbd-hid = "0.9"
 display-interface = "0.5.0"
+embassy-sync = "0.7.2"
 # pmw3360-rs = { path = "../pmw3360-rs", features = ["rmk"] }
 # rmk-types = "0.2.2"
 

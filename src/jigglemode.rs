@@ -3,17 +3,23 @@ use core::sync::atomic::{AtomicBool, Ordering};
 use defmt::debug;
 use defmt::info;
 use rmk::channel::KEYBOARD_REPORT_CHANNEL;
+use rmk::event::publish_event;
 use rmk::event::KeyboardEvent;
+use rmk::event::LayerChangeEvent;
 use rmk::hid::Report;
 use rmk::keymap::KeyMap;
 use rmk::types::action::Action;
 use rmk::types::action::KeyAction;
 use rmk_macro::processor;
+use rmk_macro::{Event, event};
 use usbd_hid::descriptor::MouseReport;
-use rmk::event::LayerChangeEvent;
-
 
 static JIGGLE_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+#[event(channel_size = 2)]
+#[derive(Clone, Copy, Debug)]
+pub struct JiggleEvent(pub bool);
+
 
 #[processor(subscribe = [LayerChangeEvent, KeyboardEvent], poll_interval = 1000)]
 pub struct JiggleController<
@@ -46,15 +52,19 @@ impl<'a, const ROW: usize, const COL: usize, const NUM_LAYER: usize, const NUM_E
     }
 
     pub async fn on_keyboard_event(&mut self, event: KeyboardEvent) {
-        let keyevent = self.keymap.borrow().get_action_at(event.pos, self.current_layer as usize);
+        let keyevent = self
+            .keymap
+            .borrow()
+            .get_action_at(event.pos, self.current_layer as usize);
         if event.pressed {
             match keyevent {
                 KeyAction::Single(Action::User(0)) => {
-                        info!("Got KeyCode::User0");
-                        let current = JIGGLE_ACTIVE.load(Ordering::SeqCst);
-                        info!("Jiggle was {}, storing {}", current, !current);
-                        JIGGLE_ACTIVE.store(!current, Ordering::SeqCst);
-                },
+                    info!("Got KeyCode::User0");
+                    let current = JIGGLE_ACTIVE.load(Ordering::SeqCst);
+                    info!("Jiggle was {}, storing {}", current, !current);
+                    JIGGLE_ACTIVE.store(!current, Ordering::SeqCst);
+                    publish_event(JiggleEvent(!current));
+                }
                 _ => {}
             }
         }

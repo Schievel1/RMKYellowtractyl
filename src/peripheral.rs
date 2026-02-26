@@ -22,6 +22,7 @@ use rmk::split::SPLIT_MESSAGE_MAX_SIZE;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
+pub mod jigglemode;
 pub mod ssd1306cont;
 use ssd1306cont::Ssd1306Controller;
 

@@ -1,6 +1,5 @@
 use core::cell::RefCell;
 use core::sync::atomic::{AtomicBool, Ordering};
-use defmt::debug;
 use defmt::info;
 use rmk::channel::KEYBOARD_REPORT_CHANNEL;
 use rmk::event::publish_event;
@@ -11,7 +10,7 @@ use rmk::keymap::KeyMap;
 use rmk::types::action::Action;
 use rmk::types::action::KeyAction;
 use rmk_macro::processor;
-use rmk_macro::{Event, event};
+use rmk_macro::event;
 use usbd_hid::descriptor::MouseReport;
 
 static JIGGLE_ACTIVE: AtomicBool = AtomicBool::new(false);
@@ -19,7 +18,6 @@ static JIGGLE_ACTIVE: AtomicBool = AtomicBool::new(false);
 #[event(channel_size = 2)]
 #[derive(Clone, Copy, Debug)]
 pub struct JiggleEvent(pub bool);
-
 
 #[processor(subscribe = [LayerChangeEvent, KeyboardEvent], poll_interval = 1000)]
 pub struct JiggleController<
